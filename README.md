@@ -2,7 +2,7 @@
 
 Automatically syncs one or more GitLab repositories into OpenWebUI knowledge bases so you can chat with your codebase using a local LLM.
 
-Every hour, it pulls all text-based files from your GitLab project and indexes them into OpenWebUI using your configured embedding model. Binary files are detected and skipped automatically.
+Every sync interval (i.e., 1 hour), it pulls all text-based files from your GitLab project and indexes them into OpenWebUI using your configured embedding model. Binary files are detected and skipped automatically.
 
 ## How it works
 
