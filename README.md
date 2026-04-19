@@ -238,7 +238,88 @@ docker compose up -d gitlab-rag-sync
 # Rebuild after editing sync.py or Dockerfile
 docker compose up -d --build gitlab-rag-sync
 ```
+---
+  ## Full example docker-compose.yml
 
+  The assumed setup runs Ollama, OpenWebUI, and GitLab together in a single compose file. Here is
+  what that looks like with `gitlab-rag-sync` included for a single local repo:
+
+  ```yaml
+  services:
+
+    ollama:
+      image: ollama/ollama
+      container_name: ollama
+      runtime: nvidia
+      environment:
+        - NVIDIA_VISIBLE_DEVICES=all
+      volumes:
+        - ollama_data:/root/.ollama
+      ports:
+        - "11434:11434"
+      restart: unless-stopped
+
+    open-webui:
+      image: ghcr.io/open-webui/open-webui:v0.8.12
+      container_name: open-webui
+      depends_on:
+        - ollama
+      environment:
+        - OLLAMA_BASE_URL=http://ollama:11434
+      volumes:
+        - open_webui_data:/app/backend/data
+      ports:
+        - "3000:8080"
+      restart: unless-stopped
+
+    gitlab:
+      image: gitlab/gitlab-ce:latest
+      container_name: gitlab
+      restart: always
+      hostname: localhost
+      environment:
+        GITLAB_OMNIBUS_CONFIG: |
+          external_url 'http://localhost'
+          gitlab_rails['gitlab_shell_ssh_port'] = 2222
+          puma['worker_processes'] = 2
+          sidekiq['concurrency'] = 5
+          prometheus_monitoring['enable'] = false
+      ports:
+        - "80:80"
+        - "443:443"
+        - "2222:22"
+      volumes:
+        - gitlab_config:/etc/gitlab
+        - gitlab_logs:/var/log/gitlab
+        - gitlab_data:/var/opt/gitlab
+      shm_size: '256m'
+
+    gitlab-rag-sync:
+      build: gitlab-rag
+      container_name: gitlab-rag-sync
+      restart: always
+      depends_on:
+        open-webui:
+          condition: service_healthy
+        gitlab:
+          condition: service_healthy
+      env_file:
+        - gitlab-rag/.env
+      environment:
+        GITLAB_URL: "http://gitlab"
+        OPENWEBUI_URL: "http://open-webui:8080"
+        SYNC_INTERVAL: "3600"
+
+  volumes:
+    ollama_data:
+    open_webui_data:
+    gitlab_config:
+    gitlab_logs:
+    gitlab_data:
+  ```
+
+  > Remove `runtime: nvidia` from the ollama service if you do not have an NVIDIA GPU.
+  > See `example.docker-compose.yml` for multi-repo and remote GitLab variations.
 ---
 
 ## Notes
