@@ -28,7 +28,7 @@ To set the embedding model: **OpenWebUI → Admin Panel → Settings → Documen
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/gitlab-rag-sync.git
+git clone https://github.com/mscirocco44/gitlab-rag-sync.git
 ```
 
 ### 2. Create your .env file(s)
