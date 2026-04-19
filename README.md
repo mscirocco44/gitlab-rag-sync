@@ -31,21 +31,43 @@ To set the embedding model: **OpenWebUI → Admin Panel → Settings → Documen
 git clone https://github.com/mscirocco44/gitlab-rag-sync.git
 ```
 
-### 2. Create your .env file(s)
+### 2. Set up the directory structure
+
+The `gitlab-rag` folder needs to sit alongside your `docker-compose.yml`. Copy it into the same directory as your compose file:
+
+```bash
+cp -r gitlab-rag/ /path/to/your/docker-compose-directory/
+```
+
+Your project layout should look like this:
+
+```
+your-project/
+├── docker-compose.yml
+├── gitlab-rag/
+│   ├── sync.py
+│   ├── Dockerfile
+│   ├── .env
+│   └── project-b.env    # only needed if syncing multiple repos
+```
+
+> The `build: gitlab-rag` line in the docker-compose service block tells Docker to look for a `Dockerfile` inside a folder called `gitlab-rag` relative to where `docker-compose.yml` lives. If the folder is placed elsewhere, update that path accordingly.
+
+### 3. Create your .env file(s)
 
 Copy the example and fill in your values. You need one `.env` file per GitLab project you want to index.
 
-ENSURE that your GitLab personal token has READ-ONLY permissions.
+Ensure that your GitLab personal token has **read-only** permissions.
 
 ```bash
 cp .env.example .env
 ```
 
 ```
-GITLAB_TOKEN=        # GitLab personal access token (read only scope)
+GITLAB_TOKEN=        # GitLab personal access token (read_api scope)
 GITLAB_PROJECT_ID=   # Found under your project name in GitLab
 GITLAB_BRANCH=main
-OPENWEBUI_TOKEN=     # OpenWebUI API key
+OPENWEBUI_TOKEN=     # OpenWebUI API key (Settings → Account → API Keys)
 KNOWLEDGE_NAME=gitlab-repo
 ```
 
@@ -56,7 +78,7 @@ cp .env.example project-a.env
 cp .env.example project-b.env
 ```
 
-### 3. Add to your docker-compose.yml
+### 4. Add to your docker-compose.yml
 
 See `example.docker-compose.yml` for a full reference. Below are the relevant service blocks.
 
@@ -189,7 +211,7 @@ Same as above but with one service block per project:
       SYNC_INTERVAL: "3600"
 ```
 
-### 4. Start it
+### 5. Start it
 
 ```bash
 docker compose up -d --build
@@ -202,6 +224,89 @@ For multiple repos, all sync containers start together. You can tail a specific 
 docker logs -f gitlab-rag-sync-project-a
 docker logs -f gitlab-rag-sync-project-b
 ```
+
+---
+
+## Full example docker-compose.yml
+
+The assumed setup runs Ollama, OpenWebUI, and GitLab together in a single compose file. Here is what that looks like with `gitlab-rag-sync` included for a single local repo:
+
+```yaml
+services:
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.8.12
+    container_name: open-webui
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - open_webui_data:/app/backend/data
+    ports:
+      - "3000:8080"
+    restart: unless-stopped
+
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    container_name: gitlab
+    restart: always
+    hostname: localhost
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+        puma['worker_processes'] = 2
+        sidekiq['concurrency'] = 5
+        prometheus_monitoring['enable'] = false
+    ports:
+      - "80:80"
+      - "443:443"
+      - "2222:22"
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+    shm_size: '256m'
+
+  gitlab-rag-sync:
+    build: gitlab-rag
+    container_name: gitlab-rag-sync
+    restart: always
+    depends_on:
+      open-webui:
+        condition: service_healthy
+      gitlab:
+        condition: service_healthy
+    env_file:
+      - gitlab-rag/.env
+    environment:
+      GITLAB_URL: "http://gitlab"
+      OPENWEBUI_URL: "http://open-webui:8080"
+      SYNC_INTERVAL: "3600"
+
+volumes:
+  ollama_data:
+  open_webui_data:
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:
+```
+
+> Remove `runtime: nvidia` from the ollama service if you do not have an NVIDIA GPU.
+> See `example.docker-compose.yml` for multi-repo and remote GitLab variations.
 
 ---
 
@@ -237,88 +342,7 @@ docker compose up -d gitlab-rag-sync
 # Rebuild after editing sync.py or Dockerfile
 docker compose up -d --build gitlab-rag-sync
 ```
----
-  ## Full example docker-compose.yml
 
-  The assumed setup runs Ollama, OpenWebUI, and GitLab together in a single compose file. Here is
-  what that looks like with `gitlab-rag-sync` included for a single local repo:
-
-  ```yaml
-  services:
-
-    ollama:
-      image: ollama/ollama
-      container_name: ollama
-      runtime: nvidia
-      environment:
-        - NVIDIA_VISIBLE_DEVICES=all
-      volumes:
-        - ollama_data:/root/.ollama
-      ports:
-        - "11434:11434"
-      restart: unless-stopped
-
-    open-webui:
-      image: ghcr.io/open-webui/open-webui:v0.8.12
-      container_name: open-webui
-      depends_on:
-        - ollama
-      environment:
-        - OLLAMA_BASE_URL=http://ollama:11434
-      volumes:
-        - open_webui_data:/app/backend/data
-      ports:
-        - "3000:8080"
-      restart: unless-stopped
-
-    gitlab:
-      image: gitlab/gitlab-ce:latest
-      container_name: gitlab
-      restart: always
-      hostname: localhost
-      environment:
-        GITLAB_OMNIBUS_CONFIG: |
-          external_url 'http://localhost'
-          gitlab_rails['gitlab_shell_ssh_port'] = 2222
-          puma['worker_processes'] = 2
-          sidekiq['concurrency'] = 5
-          prometheus_monitoring['enable'] = false
-      ports:
-        - "80:80"
-        - "443:443"
-        - "2222:22"
-      volumes:
-        - gitlab_config:/etc/gitlab
-        - gitlab_logs:/var/log/gitlab
-        - gitlab_data:/var/opt/gitlab
-      shm_size: '256m'
-
-    gitlab-rag-sync:
-      build: gitlab-rag
-      container_name: gitlab-rag-sync
-      restart: always
-      depends_on:
-        open-webui:
-          condition: service_healthy
-        gitlab:
-          condition: service_healthy
-      env_file:
-        - gitlab-rag/.env
-      environment:
-        GITLAB_URL: "http://gitlab"
-        OPENWEBUI_URL: "http://open-webui:8080"
-        SYNC_INTERVAL: "3600"
-
-  volumes:
-    ollama_data:
-    open_webui_data:
-    gitlab_config:
-    gitlab_logs:
-    gitlab_data:
-  ```
-
-  > Remove `runtime: nvidia` from the ollama service if you do not have an NVIDIA GPU.
-  > See `example.docker-compose.yml` for multi-repo and remote GitLab variations.
 ---
 
 ## Notes
@@ -328,4 +352,3 @@ docker compose up -d --build gitlab-rag-sync
 - Any file that fails UTF-8 decoding is treated as binary and skipped
 - Sync interval can be changed via the `SYNC_INTERVAL` environment variable (in seconds)
 - Each GitLab project requires its own service block and `.env` file with a unique `KNOWLEDGE_NAME`
-
