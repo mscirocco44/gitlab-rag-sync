@@ -47,7 +47,6 @@ GITLAB_PROJECT_ID=   # Found under your project name in GitLab
 GITLAB_BRANCH=main
 OPENWEBUI_TOKEN=     # OpenWebUI API key
 KNOWLEDGE_NAME=gitlab-repo
-
 ```
 
 For multiple repos, create a separate env file for each with a unique `KNOWLEDGE_NAME`:
