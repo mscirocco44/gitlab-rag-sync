@@ -1,8 +1,11 @@
 services:
+
+  # ── Local AI stack ──────────────────────────────────────────────────
+
   ollama:
     image: ollama/ollama
     container_name: ollama
-    runtime: nvidia
+    runtime: nvidia            # remove this line if you have no GPU
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
     volumes:
@@ -12,7 +15,7 @@ services:
     restart: unless-stopped
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.5.16
+    image: ghcr.io/open-webui/open-webui:latest
     container_name: open-webui
     depends_on:
       - ollama
@@ -24,6 +27,8 @@ services:
       - "3000:8080"
     restart: unless-stopped
 
+  # ── GitLab (remove this block if using a remote GitLab instance) ────
+
   gitlab:
     image: gitlab/gitlab-ce:latest
     container_name: gitlab
@@ -33,7 +38,6 @@ services:
       GITLAB_OMNIBUS_CONFIG: |
         external_url 'http://localhost'
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
-        # Reduce memory usage for local dev
         puma['worker_processes'] = 2
         sidekiq['concurrency'] = 5
         prometheus_monitoring['enable'] = false
@@ -47,6 +51,18 @@ services:
       - gitlab_data:/var/opt/gitlab
     shm_size: '256m'
 
+  # ── GitLab RAG sync ─────────────────────────────────────────────────
+  #
+  # One service block per GitLab project you want to index.
+  # Each needs:
+  #   - a unique service name and container_name
+  #   - its own .env file with a unique KNOWLEDGE_NAME
+  #
+  # For a remote GitLab instance:
+  #   - set GITLAB_URL to your GitLab host (e.g. http://gitlab.company.com)
+  #   - remove the depends_on condition for gitlab
+
+  # Example: single repo, local GitLab
   gitlab-rag-sync:
     build: gitlab-rag
     container_name: gitlab-rag-sync
@@ -56,8 +72,6 @@ services:
         condition: service_healthy
       gitlab:
         condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     env_file:
       - gitlab-rag/.env
     environment:
@@ -65,9 +79,42 @@ services:
       OPENWEBUI_URL: "http://open-webui:8080"
       SYNC_INTERVAL: "3600"
 
+  # Example: second repo, same local GitLab (uncomment to use)
+  # gitlab-rag-sync-project-b:
+  #   build: gitlab-rag
+  #   container_name: gitlab-rag-sync-project-b
+  #   restart: always
+  #   depends_on:
+  #     open-webui:
+  #       condition: service_healthy
+  #     gitlab:
+  #       condition: service_healthy
+  #   env_file:
+  #     - gitlab-rag/project-b.env
+  #   environment:
+  #     GITLAB_URL: "http://gitlab"
+  #     OPENWEBUI_URL: "http://open-webui:8080"
+  #     SYNC_INTERVAL: "3600"
+
+  # Example: repo on a remote GitLab instance (uncomment to use)
+  # gitlab-rag-sync-remote:
+  #   build: gitlab-rag
+  #   container_name: gitlab-rag-sync-remote
+  #   restart: always
+  #   depends_on:
+  #     open-webui:
+  #       condition: service_healthy
+  #   env_file:
+  #     - gitlab-rag/remote.env
+  #   environment:
+  #     GITLAB_URL: "http://your-gitlab-host"
+  #     OPENWEBUI_URL: "http://open-webui:8080"
+  #     SYNC_INTERVAL: "3600"
+
 volumes:
   ollama_data:
   open_webui_data:
   gitlab_config:
   gitlab_logs:
   gitlab_data:
+
