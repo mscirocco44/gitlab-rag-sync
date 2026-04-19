@@ -35,16 +35,19 @@ git clone https://github.com/YOUR_USERNAME/gitlab-rag-sync.git
 
 Copy the example and fill in your values. You need one `.env` file per GitLab project you want to index.
 
+ENSURE that your GitLab personal token has READ-ONLY permissions.
+
 ```bash
 cp .env.example .env
 ```
 
 ```
-GITLAB_TOKEN=        # GitLab personal access token (read_api scope)
+GITLAB_TOKEN=        # GitLab personal access token (read only scope)
 GITLAB_PROJECT_ID=   # Found under your project name in GitLab
 GITLAB_BRANCH=main
-OPENWEBUI_TOKEN=     # OpenWebUI API key (Settings → Account → API Keys)
+OPENWEBUI_TOKEN=     # OpenWebUI API key
 KNOWLEDGE_NAME=gitlab-repo
+
 ```
 
 For multiple repos, create a separate env file for each with a unique `KNOWLEDGE_NAME`:
