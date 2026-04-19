@@ -21,6 +21,8 @@ Every hour, it pulls all text-based files from your GitLab project and indexes t
 
 To set the embedding model: **OpenWebUI → Admin Panel → Settings → Documents → Embedding Model → nomic-embed-text**
 
+---
+
 ## Setup
 
 ### 1. Clone the repo
@@ -45,20 +47,27 @@ OPENWEBUI_TOKEN=     # OpenWebUI API key (Settings → Account → API Keys)
 KNOWLEDGE_NAME=gitlab-repo
 ```
 
-For multiple repos, create a separate env file for each:
+For multiple repos, create a separate env file for each with a unique `KNOWLEDGE_NAME`:
 
 ```bash
 cp .env.example project-a.env
 cp .env.example project-b.env
 ```
 
-Each env file should have a unique `KNOWLEDGE_NAME` so they appear as separate knowledge bases in OpenWebUI.
-
 ### 3. Add to your docker-compose.yml
 
-See `example.docker-compose.yml` for a full reference. Below are the relevant service blocks to copy in.
+See `example.docker-compose.yml` for a full reference. Below are the relevant service blocks.
 
-**Single repo — GitLab running locally in Docker:**
+> **Note on GITLAB_URL:**
+> - If GitLab is running in Docker on the **same compose file**, use the container name as the hostname: `http://gitlab`. Docker's internal networking resolves container names automatically — no IP or port needed as long as GitLab is on port 80 inside the container (which it is by default).
+> - If GitLab is on a **remote server**, use the actual IP or hostname with the port it is running on: `http://192.168.1.100:80`, `http://gitlab.company.com:8929`, or `https://gitlab.company.com`. If GitLab is on the default port (80 for HTTP, 443 for HTTPS), the port can be omitted.
+>
+> **Note on OPENWEBUI_URL:**
+> - Always `http://open-webui:8080`. This is the internal Docker port for the OpenWebUI container and never changes, regardless of what port OpenWebUI is mapped to on your host machine.
+
+---
+
+#### Local GitLab (running in Docker) — single repo
 
 ```yaml
   gitlab-rag-sync:
@@ -78,25 +87,9 @@ See `example.docker-compose.yml` for a full reference. Below are the relevant se
       SYNC_INTERVAL: "3600"
 ```
 
-**Single repo — GitLab hosted remotely:**
+#### Local GitLab (running in Docker) — multiple repos
 
-```yaml
-  gitlab-rag-sync:
-    build: gitlab-rag
-    container_name: gitlab-rag-sync
-    restart: always
-    depends_on:
-      open-webui:
-        condition: service_healthy
-    env_file:
-      - gitlab-rag/.env
-    environment:
-      GITLAB_URL: "http://your-gitlab-host"
-      OPENWEBUI_URL: "http://open-webui:8080"
-      SYNC_INTERVAL: "3600"
-```
-
-**Multiple repos — add one service block per project:**
+Add one service block per project. Each needs a unique service name, container name, and env file:
 
 ```yaml
   gitlab-rag-sync-project-a:
@@ -132,9 +125,67 @@ See `example.docker-compose.yml` for a full reference. Below are the relevant se
       SYNC_INTERVAL: "3600"
 ```
 
-> `OPENWEBUI_URL` uses the internal container port (8080), not the host-mapped port.
->
-> Each service needs a unique `container_name` and a separate `.env` file with a unique `KNOWLEDGE_NAME`.
+#### Remote GitLab — single repo
+
+Remove the `gitlab` depends_on condition since GitLab is not a local container. Set `GITLAB_URL` to your actual GitLab host and port:
+
+```yaml
+  gitlab-rag-sync:
+    build: gitlab-rag
+    container_name: gitlab-rag-sync
+    restart: always
+    depends_on:
+      open-webui:
+        condition: service_healthy
+    env_file:
+      - gitlab-rag/.env
+    environment:
+      GITLAB_URL: "http://your-gitlab-host:port"
+      OPENWEBUI_URL: "http://open-webui:8080"
+      SYNC_INTERVAL: "3600"
+```
+
+If your remote GitLab runs on the default port 80 (or 443 for HTTPS), the port can be omitted:
+
+```yaml
+      GITLAB_URL: "http://your-gitlab-host"
+      # or for HTTPS:
+      GITLAB_URL: "https://your-gitlab-host"
+```
+
+#### Remote GitLab — multiple repos
+
+Same as above but with one service block per project:
+
+```yaml
+  gitlab-rag-sync-project-a:
+    build: gitlab-rag
+    container_name: gitlab-rag-sync-project-a
+    restart: always
+    depends_on:
+      open-webui:
+        condition: service_healthy
+    env_file:
+      - gitlab-rag/project-a.env
+    environment:
+      GITLAB_URL: "http://your-gitlab-host:port"
+      OPENWEBUI_URL: "http://open-webui:8080"
+      SYNC_INTERVAL: "3600"
+
+  gitlab-rag-sync-project-b:
+    build: gitlab-rag
+    container_name: gitlab-rag-sync-project-b
+    restart: always
+    depends_on:
+      open-webui:
+        condition: service_healthy
+    env_file:
+      - gitlab-rag/project-b.env
+    environment:
+      GITLAB_URL: "http://your-gitlab-host:port"
+      OPENWEBUI_URL: "http://open-webui:8080"
+      SYNC_INTERVAL: "3600"
+```
 
 ### 4. Start it
 
@@ -150,6 +201,8 @@ docker logs -f gitlab-rag-sync-project-a
 docker logs -f gitlab-rag-sync-project-b
 ```
 
+---
+
 ## Usage
 
 Once the first sync completes, open OpenWebUI and start a chat. Type `#` and select a knowledge base from the dropdown, then ask questions about your code:
@@ -161,6 +214,8 @@ Once the first sync completes, open OpenWebUI and start a chat. Type `#` and sel
 ```
 
 Each knowledge base corresponds to one GitLab project and is queryable independently.
+
+---
 
 ## Useful commands
 
@@ -181,10 +236,13 @@ docker compose up -d gitlab-rag-sync
 docker compose up -d --build gitlab-rag-sync
 ```
 
+---
+
 ## Notes
 
 - The knowledge base is fully reset on each sync to stay consistent with the repo
 - Files over 500KB are skipped
 - Any file that fails UTF-8 decoding is treated as binary and skipped
 - Sync interval can be changed via the `SYNC_INTERVAL` environment variable (in seconds)
-- Each GitLab project requires its own service block and `.env` file
+- Each GitLab project requires its own service block and `.env` file with a unique `KNOWLEDGE_NAME`
+

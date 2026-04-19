@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:latest
+    image: ghcr.io/open-webui/open-webui:v0.8.12
     container_name: open-webui
     depends_on:
       - ollama
@@ -27,7 +27,7 @@ services:
       - "3000:8080"
     restart: unless-stopped
 
-  # ── GitLab (remove this block if using a remote GitLab instance) ────
+  # ── GitLab (remove this entire block if using a remote GitLab) ──────
 
   gitlab:
     image: gitlab/gitlab-ce:latest
@@ -53,16 +53,30 @@ services:
 
   # ── GitLab RAG sync ─────────────────────────────────────────────────
   #
-  # One service block per GitLab project you want to index.
-  # Each needs:
-  #   - a unique service name and container_name
-  #   - its own .env file with a unique KNOWLEDGE_NAME
+  # GITLAB_URL explained:
+  #   - If GitLab is running in Docker on the same compose file:
+  #       Use the container name as the hostname: http://gitlab
+  #       Docker's internal networking resolves container names automatically.
   #
-  # For a remote GitLab instance:
-  #   - set GITLAB_URL to your GitLab host (e.g. http://gitlab.company.com)
-  #   - remove the depends_on condition for gitlab
+  #   - If GitLab is running on a remote server:
+  #       Use the actual IP or hostname with the port GitLab is running on.
+  #       Examples:
+  #         http://192.168.1.100:80
+  #         http://gitlab.company.com:8929
+  #         https://gitlab.company.com
+  #       If GitLab is on the default port (80 for http, 443 for https), the port can be omitted.
+  #
+  # OPENWEBUI_URL:
+  #   Always http://open-webui:8080 — this is the internal Docker port for OpenWebUI.
+  #   It does not change regardless of what port OpenWebUI is mapped to on the host.
+  #
+  # Multiple repos:
+  #   Copy a service block for each GitLab project you want to index.
+  #   Each block needs a unique service name, container_name, and env_file.
+  #   Each .env file must have a unique KNOWLEDGE_NAME.
+  # ────────────────────────────────────────────────────────────────────
 
-  # Example: single repo, local GitLab
+  # Single repo — local GitLab in Docker
   gitlab-rag-sync:
     build: gitlab-rag
     container_name: gitlab-rag-sync
@@ -75,11 +89,11 @@ services:
     env_file:
       - gitlab-rag/.env
     environment:
-      GITLAB_URL: "http://gitlab"
+      GITLAB_URL: "http://gitlab"        # container name — Docker resolves this internally
       OPENWEBUI_URL: "http://open-webui:8080"
       SYNC_INTERVAL: "3600"
 
-  # Example: second repo, same local GitLab (uncomment to use)
+  # Second repo — same local GitLab (uncomment to use)
   # gitlab-rag-sync-project-b:
   #   build: gitlab-rag
   #   container_name: gitlab-rag-sync-project-b
@@ -90,24 +104,40 @@ services:
   #     gitlab:
   #       condition: service_healthy
   #   env_file:
-  #     - gitlab-rag/project-b.env
+  #     - gitlab-rag/project-b.env       # separate .env with unique KNOWLEDGE_NAME
   #   environment:
   #     GITLAB_URL: "http://gitlab"
   #     OPENWEBUI_URL: "http://open-webui:8080"
   #     SYNC_INTERVAL: "3600"
 
-  # Example: repo on a remote GitLab instance (uncomment to use)
-  # gitlab-rag-sync-remote:
+  # Single repo — remote GitLab (uncomment to use)
+  # Remove the gitlab service block above and use this instead.
+  # gitlab-rag-sync:
   #   build: gitlab-rag
-  #   container_name: gitlab-rag-sync-remote
+  #   container_name: gitlab-rag-sync
+  #   restart: always
+  #   depends_on:
+  #     open-webui:
+  #       condition: service_healthy     # no gitlab depends_on — it's not a local container
+  #   env_file:
+  #     - gitlab-rag/.env
+  #   environment:
+  #     GITLAB_URL: "http://your-gitlab-host:port"   # real hostname/IP and port
+  #     OPENWEBUI_URL: "http://open-webui:8080"
+  #     SYNC_INTERVAL: "3600"
+
+  # Second repo — remote GitLab (uncomment to use)
+  # gitlab-rag-sync-project-b:
+  #   build: gitlab-rag
+  #   container_name: gitlab-rag-sync-project-b
   #   restart: always
   #   depends_on:
   #     open-webui:
   #       condition: service_healthy
   #   env_file:
-  #     - gitlab-rag/remote.env
+  #     - gitlab-rag/project-b.env
   #   environment:
-  #     GITLAB_URL: "http://your-gitlab-host"
+  #     GITLAB_URL: "http://your-gitlab-host:port"
   #     OPENWEBUI_URL: "http://open-webui:8080"
   #     SYNC_INTERVAL: "3600"
 
