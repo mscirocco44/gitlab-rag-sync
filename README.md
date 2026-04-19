@@ -9,7 +9,7 @@ Every hour, it pulls all text-based files from your GitLab project and indexes t
 1. Pulls all files from a GitLab project via the API
 2. Skips binary files (images, archives, compiled files, etc.)
 3. Resets and re-indexes the OpenWebUI knowledge base
-4. Repeats every hour
+4. Repeats every hour (or however long you configure it to repeat in the ENV settings)
 
 ## Requirements
 
